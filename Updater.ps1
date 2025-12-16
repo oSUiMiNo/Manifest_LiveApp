@@ -29,8 +29,7 @@ $UpdaterPath        = Join-Path $RootPath "Updater.ps1"
 $LocalManifestPath  = Join-Path $RootPath "manifest.local.json"
 $RemoteManifestPath = Join-Path $RootPath "manifest.remote.json"   # デバッグ用（任意）
 $UpdaterLog         = Join-Path $RootPath "updater.log"
-
-$BuildDir = Join-Path $RootPath "Build"
+$BuildDir           = Join-Path $RootPath "Build"
 
 # 旧Buildを残すならtrue（必要ならfalseに）
 $KeepOldBuild = $true
@@ -42,15 +41,15 @@ function Write-Log([string]$Message) {
     try { Add-Content -Path $UpdaterLog -Value $line -Encoding UTF8 } catch {}
 }
 
+function Ensure-Tls12() {
+    # Windows PowerShell 5.1向け
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+}
+
 function Add-CacheBuster([string]$Url) {
     $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     if ($Url -match '\?') { return "${Url}&v=$ts" }
     return "${Url}?v=$ts"
-}
-
-function Ensure-Tls12() {
-    # Windows PowerShell 5.1向け
-    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 }
 
 function Get-Json([string]$Url) {
@@ -101,6 +100,14 @@ function Read-LocalManifest() {
     }
 }
 
+function New-EmptyLocalManifest() {
+    return [pscustomobject]@{
+        manifestUrl = ""
+        build   = [pscustomobject]@{ version=""; url=""; sha256="" }
+        updater = [pscustomobject]@{ version=""; url=""; sha256="" }
+    }
+}
+
 function Write-LocalManifest($manifestObj) {
     # 「成功した最後」にだけ呼ぶ想定（安全に tmp→rename）
     $tmp = Join-Path $RootPath "manifest.local.json.tmp"
@@ -141,7 +148,6 @@ function Try-Resolve-ManifestUrl([string]$initialUrl) {
 
     $candidate = [string]$m1.manifestUrl
     if ([string]::IsNullOrWhiteSpace($candidate)) {
-        # remoteがmanifestUrlを持たないなら、そのまま使う
         $m1 | Add-Member -NotePropertyName manifestUrl -NotePropertyValue $initialUrl -Force
         return @{ url = $initialUrl; manifest = $m1 }
     }
@@ -172,8 +178,9 @@ function Update-UpdaterIfNeeded($local, $remote) {
     if ($null -eq $remoteUpdater) { return $false }
 
     $need = Need-UpdateByManifest ($local.updater) $remoteUpdater
+
+    # 念のため：manifest上一致でも、sha256があるなら実ファイルも比較して壊れ検知
     if (-not $need) {
-        # manifest上は一致扱い。念のためshaがあるなら実ファイルもチェック（壊れ検知）
         $rh = [string]$remoteUpdater.sha256
         if (-not [string]::IsNullOrWhiteSpace($rh) -and (Test-Path $UpdaterPath)) {
             $actual = Get-SHA256 $UpdaterPath
@@ -200,11 +207,8 @@ function Update-UpdaterIfNeeded($local, $remote) {
     Download-File $url $tmpFile
     try { Unblock-File -Path $tmpFile -ErrorAction SilentlyContinue } catch {}
 
-    # remoteがsha256を持つなら検証
     Assert-HashIfProvided $tmpFile ([string]$remoteUpdater.sha256)
 
-
-    # shaが無い運用でも「同じ内容なら差し替えない」ようにする
     $newHash = Get-SHA256 $tmpFile
     $oldHash = if (Test-Path $UpdaterPath) { Get-SHA256 $UpdaterPath } else { "" }
 
@@ -226,9 +230,9 @@ function Get-MainExePath([string]$Dir) {
     $c = Get-ChildItem -Path $Dir -Filter "*.exe" -File -ErrorAction SilentlyContinue
     if (-not $c) { return $null }
 
-    # UnityのCrashHandler系は除外、サイズ最大を本体扱い
     $c = $c | Where-Object { $_.Name -notmatch 'UnityCrashHandler|CrashHandler|Launcher|Updater' }
     if (-not $c) { return $null }
+
     return ($c | Sort-Object Length -Descending | Select-Object -First 1).FullName
 }
 
@@ -271,6 +275,7 @@ function Update-BuildIfNeeded($local, $remote) {
     $zipPath = Join-Path $tmpDir "Build.zip"
     Download-File $zipUrl $zipPath
     try { Unblock-File -Path $zipPath -ErrorAction SilentlyContinue } catch {}
+
     Assert-HashIfProvided $zipPath ([string]$remoteBuild.sha256)
 
     $extractDir = Join-Path $tmpDir "extracted"
@@ -291,14 +296,12 @@ function Update-BuildIfNeeded($local, $remote) {
     if (Test-Path $BuildNew) { Remove-Item $BuildNew -Recurse -Force -ErrorAction SilentlyContinue }
     Move-Item -Path $newRoot -Destination $BuildNew -Force
 
-    # 原子的入替（失敗時は可能な範囲で戻す）
     if (Test-Path $BuildOld) { Remove-Item $BuildOld -Recurse -Force -ErrorAction SilentlyContinue }
 
     try {
         if (Test-Path $BuildDir) { Rename-Item -Path $BuildDir -NewName "Build_old" }
         Rename-Item -Path $BuildNew -NewName "Build"
-    }
-    catch {
+    } catch {
         if ((Test-Path $BuildOld) -and -not (Test-Path $BuildDir)) {
             try { Rename-Item -Path $BuildOld -NewName "Build" } catch {}
         }
@@ -318,20 +321,13 @@ function Update-BuildIfNeeded($local, $remote) {
 try {
     # 1) local manifest 読み込み（無ければ空扱い）
     $local = Read-LocalManifest
-    if ($null -eq $local) {
-        $local = [pscustomobject]@{
-            manifestUrl = ""
-            build   = [pscustomobject]@{ version=""; url=""; sha256="" }
-            updater = [pscustomobject]@{ version=""; url=""; sha256="" }
-        }
-    }
+    if ($null -eq $local) { $local = New-EmptyLocalManifest }
 
     # 2) remote manifest 取得（移転先があれば二段階確認）
-    $resolved = Try-Resolve-ManifestUrl $ManifestUrl
+    $resolved     = Try-Resolve-ManifestUrl $ManifestUrl
     $effectiveUrl = [string]$resolved.url
-    $remote = $resolved.manifest
+    $remote       = $resolved.manifest
 
-    # remoteがmanifestUrlを持っていないケースは補完
     if ([string]::IsNullOrWhiteSpace([string]$remote.manifestUrl)) {
         $remote | Add-Member -NotePropertyName manifestUrl -NotePropertyValue $effectiveUrl -Force
     }
@@ -341,16 +337,14 @@ try {
         exit $EXIT_RELAUNCH
     }
 
-    # 4) Build更新（必要なら更新）
-    $buildUpdated = Update-BuildIfNeeded $local $remote
+    # 4) Build更新
+    [void](Update-BuildIfNeeded $local $remote)
 
-    # 5) exe起動前に local manifest を更新（更新が無くても、URL移転の反映などのために書く）
+    # 5) exe起動前に local manifest を更新（更新が無くてもURL移転の反映などのために書く）
     try {
-        # ここで保存するのは「最後に成功したremote」＝次回比較の基準
         Write-LocalManifest $remote
         Write-Log "Local manifest updated."
     } catch {
-        # ここで止めるとユーザー体験が悪いので、書けなかったらログだけ（次回はbootstrap頼み）
         Write-Log "WARN: Failed to write manifest.local.json: $($_.Exception.Message)"
     }
 
