@@ -200,7 +200,7 @@ function Update-UpdaterIfNeeded($local, $remote) {
     $url = [string]$remoteUpdater.url
     if ([string]::IsNullOrWhiteSpace($url)) { throw "remote.updater.url is empty." }
 
-        $tmpDir = Join-Path $RootPath "_update_tmp"
+    $tmpDir = Join-Path $RootPath "_update_tmp"
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 
     # まずはそのままDL（rawの実体）
