@@ -202,9 +202,8 @@ function Update-UpdaterIfNeeded($local, $remote) {
     try { Unblock-File -Path $tmpFile -ErrorAction SilentlyContinue } catch {}
 
     # remoteがsha256を持つなら検証
-    Assert-HashIfProvided $tmpFile ([string]$remoteUpdater.sha256
+    Assert-HashIfProvided $tmpFile ([string]$remoteUpdater.sha256)
 
-    )
 
     # shaが無い運用でも「同じ内容なら差し替えない」ようにする
     $newHash = Get-SHA256 $tmpFile
