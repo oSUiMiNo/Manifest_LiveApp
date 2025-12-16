@@ -43,10 +43,9 @@ function Write-Log([string]$Message) {
 }
 
 function Add-CacheBuster([string]$Url) {
-    # GitHub raw等のキャッシュ事故を減らす
     $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    if ($Url -match '\?') { return "$Url&v=$ts" }
-    return "$Url?v=$ts"
+    if ($Url -match '\?') { return "${Url}&v=$ts" }
+    return "${Url}?v=$ts"
 }
 
 function Ensure-Tls12() {
