@@ -3,11 +3,11 @@
   "build": {
     "version": "1.23",
     "url": "https://oohiramao.quickconnect.to/d/s/16FGzIsiVTgWaP5cKkqCRSeTEaVS4Cf4/VGN42thkLP0dOOW2McjUvWR3JBn5A58P-C7OAmaMz0gw",
-    "sha256": "..."
+    "sha256": ""
   },
   "updater": {
     "version": "1.0",
     "url": "https://raw.githubusercontent.com/oSUiMiNo/Manifest_LiveApp/refs/heads/main/Updater.ps1",
-    "sha256": "..."
+    "sha256": "5174C9C1EF9C6779C74CF601A74E3579C4D4DCC31E747E1C1CE2C7C1E3D87633"
   }
 }
