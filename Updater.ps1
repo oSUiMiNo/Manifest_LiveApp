@@ -200,30 +200,39 @@ function Update-UpdaterIfNeeded($local, $remote) {
     $url = [string]$remoteUpdater.url
     if ([string]::IsNullOrWhiteSpace($url)) { throw "remote.updater.url is empty." }
 
-    $tmpDir = Join-Path $RootPath "_update_tmp"
+        $tmpDir = Join-Path $RootPath "_update_tmp"
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 
-    $tmpFile = Join-Path $tmpDir "Updater.ps1"
-    Download-File $url $tmpFile
-    try { Unblock-File -Path $tmpFile -ErrorAction SilentlyContinue } catch {}
+    # まずはそのままDL（rawの実体）
+    $downloaded = Join-Path $tmpDir "Updater.downloaded.ps1"
+    Download-File $url $downloaded
+    try { Unblock-File -Path $downloaded -ErrorAction SilentlyContinue } catch {}
 
-    Assert-HashIfProvided $tmpFile ([string]$remoteUpdater.sha256)
+    # remoteがsha256を持つなら「DL直後の実体」で検証（BOM付与前）
+    Assert-HashIfProvided $downloaded ([string]$remoteUpdater.sha256)
 
-    $newHash = Get-SHA256 $tmpFile
+    # その後、PowerShell 5.1で安定するようにUTF-8 BOM付きへ正規化
+    $normalized = Join-Path $tmpDir "Updater.normalized.ps1"
+    $txt = Get-Content -Path $downloaded -Raw -Encoding UTF8
+    Set-Content -Path $normalized -Value $txt -Encoding UTF8   # PS5.1: UTF8はBOM付きで保存される
+
+    # 比較も「正規化後」のファイル同士でやる（BOM差でループしない）
+    $newHash = Get-SHA256 $normalized
     $oldHash = if (Test-Path $UpdaterPath) { Get-SHA256 $UpdaterPath } else { "" }
 
     if ($newHash -eq $oldHash) {
-        Write-Log "Updater: downloaded but identical. Skip replace."
+        Write-Log "Updater: downloaded but identical (normalized). Skip replace."
         return $false
     }
 
+    # 差し替え（正規化済みを配置）
     $newPath = Join-Path $RootPath "Updater.ps1.new"
-    $txt = Get-Content -Path $tmpFile -Raw -Encoding UTF8
-    Set-Content -Path $newPath -Value $txt -Encoding UTF8   # PS5.1: UTF8 は BOM付き
+    Copy-Item -Path $normalized -Destination $newPath -Force
     Move-Item -Path $newPath -Destination $UpdaterPath -Force
 
     Write-Log "Updater updated. Request relaunch."
     return $true
+
 }
 
 function Get-MainExePath([string]$Dir) {
