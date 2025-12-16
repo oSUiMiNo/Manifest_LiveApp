@@ -1,0 +1,13 @@
+{
+  "manifestUrl": "https://.../latest.json", 
+  "build": {
+    "version": "1.23",
+    "url": "https://.../Build.zip",
+    "sha256": "..."
+  },
+  "updater": {
+    "version": "1.1",
+    "url": "https://.../Updater.ps1",
+    "sha256": "..."
+  }
+}
