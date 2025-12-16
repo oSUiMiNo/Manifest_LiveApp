@@ -1,7 +1,7 @@
 {
   "manifestUrl": "https://raw.githubusercontent.com/oSUiMiNo/Manifest_LiveApp/refs/heads/main/manifest.remote.json", 
   "build": {
-    "version": "1.23",
+    "version": "1.0",
     "url": "https://oohiramao.quickconnect.to/d/s/16FGzIsiVTgWaP5cKkqCRSeTEaVS4Cf4/VGN42thkLP0dOOW2McjUvWR3JBn5A58P-C7OAmaMz0gw",
     "sha256": ""
   },
