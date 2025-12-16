@@ -218,7 +218,8 @@ function Update-UpdaterIfNeeded($local, $remote) {
     }
 
     $newPath = Join-Path $RootPath "Updater.ps1.new"
-    Copy-Item -Path $tmpFile -Destination $newPath -Force
+    $txt = Get-Content -Path $tmpFile -Raw -Encoding UTF8
+    Set-Content -Path $newPath -Value $txt -Encoding UTF8   # PS5.1: UTF8 は BOM付き
     Move-Item -Path $newPath -Destination $UpdaterPath -Force
 
     Write-Log "Updater updated. Request relaunch."
