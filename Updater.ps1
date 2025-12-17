@@ -25,23 +25,19 @@ if ([string]::IsNullOrWhiteSpace($RootPath)) {
     $RootPath = $PSScriptRoot
 }
 
+$LogDir = Join-Path $RootPath "Log"
+New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+
 $UpdaterPath        = Join-Path $RootPath "Updater.ps1"
 $LocalManifestPath  = Join-Path $RootPath "manifest.local.json"
-$RemoteManifestPath = Join-Path $RootPath "manifest.remote.json"   # 旧デバッグ互換（最終的に残さない）
-# Logs are stored in LiveApp/Log
-$LogDir = Join-Path $RootPath "Log"
-try { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null } catch {}
-
-# Migrate old log once (optional)
-$OldUpdaterLog = Join-Path $RootPath "updater.log"
-$UpdaterLog    = Join-Path $LogDir "updater.log"
-try {
-    if (Test-Path $OldUpdaterLog -and -not (Test-Path $UpdaterLog)) {
-        Move-Item -Path $OldUpdaterLog -Destination $UpdaterLog -Force
-    }
-} catch {}
-
+$UpdaterLog         = Join-Path $LogDir "updater.log"
 $BuildDir           = Join-Path $RootPath "Build"
+
+# デバッグ残骸（過去版の名残り）を消しておく
+$LegacyRemoteManifest = Join-Path $RootPath "manifest.remote.json"
+if (Test-Path $LegacyRemoteManifest) {
+    try { Remove-Item $LegacyRemoteManifest -Force -ErrorAction SilentlyContinue } catch {}
+}
 
 # 旧Buildを残すならtrue（必要ならfalseに）
 $KeepOldBuild = $true
@@ -301,17 +297,10 @@ function Update-BuildIfNeeded($local, $remote) {
 
     # zipの中身が「Build/..」1階層か、直置きか両対応
     $newRoot = $extractDir
-    $dirs  = Get-ChildItem -Path $extractDir -Directory -ErrorAction SilentlyContinue
-    $files = Get-ChildItem -Path $extractDir -File      -ErrorAction SilentlyContinue
-
-    # NOTE:
-    #  - $dirs/$files は「単体オブジェクト」になる場合があるので .Count 参照は危険。
-    #  - @() で配列化して Count を安全に見る。
-    $dirsArr  = @($dirs)
-    $filesArr = @($files)
-
-    if ($dirsArr.Count -eq 1 -and $filesArr.Count -eq 0) {
-        $newRoot = $dirsArr[0].FullName
+    $dirs  = @(Get-ChildItem -Path $extractDir -Directory -ErrorAction SilentlyContinue)
+    $files = @(Get-ChildItem -Path $extractDir -File      -ErrorAction SilentlyContinue)
+    if ($dirs.Length -eq 1 -and $files.Length -eq 0) {
+        $newRoot = $dirs[0].FullName
     }
 
     $BuildNew = Join-Path $RootPath "Build_new"
@@ -371,9 +360,6 @@ try {
     } catch {
         Write-Log "WARN: Failed to write manifest.local.json: $($_.Exception.Message)"
     }
-
-    # Cleanup: remove debug remote manifest file (if any)
-    try { Remove-Item -Path $RemoteManifestPath -Force -ErrorAction SilentlyContinue } catch {}
 
     # 6) 起動
     $exe = Get-MainExePath $BuildDir
