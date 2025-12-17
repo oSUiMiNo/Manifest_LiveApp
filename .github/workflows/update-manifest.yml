@@ -3,6 +3,11 @@ name: Update manifest.remote.json on Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "対象のReleaseタグ（例: v1.2）"
+        required: true
 
 permissions:
   contents: write
@@ -16,37 +21,53 @@ jobs:
     steps:
       - name: Set variables
         run: |
+          set -euo pipefail
           echo "REPO=${{ github.repository }}" >> "$GITHUB_ENV"
-          echo "TAG=${{ github.event.release.tag_name }}" >> "$GITHUB_ENV"
+
+          # releaseイベントなら release.tag_name、手動実行なら inputs.tag を使う
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "TAG=${{ github.event.inputs.tag }}" >> "$GITHUB_ENV"
+          else
+            echo "TAG=${{ github.event.release.tag_name }}" >> "$GITHUB_ENV"
+          fi
 
       - name: Find previous release tag (for base manifest)
         run: |
           set -euo pipefail
           gh api "repos/$REPO/releases?per_page=30" > releases.json
+
           python3 - <<'PY'
           import json, os
+
           tag = os.environ["TAG"]
-          rels = json.load(open("releases.json", "r", encoding="utf-8"))
+          with open("releases.json", "r", encoding="utf-8") as f:
+              rels = json.load(f)
+
           prev = ""
           for r in rels:
               if r.get("draft"):
+                  continue
+              # prereleaseを使う場合、latest対象から外れることが多いのでベースからも除外（不要なら消してOK）
+              if r.get("prerelease"):
                   continue
               if r.get("tag_name") == tag:
                   continue
               prev = r.get("tag_name", "")
               if prev:
                   break
+
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
               f.write(f"PREV_TAG={prev}\n")
+
           print("PREV_TAG =", prev)
           PY
-
 
       - name: Download base manifest from previous release (if exists)
         run: |
           set -euo pipefail
           mkdir -p base
-          if [ -n "${PREV_TAG}" ]; then
+
+          if [ -n "${PREV_TAG:-}" ]; then
             gh release download "$PREV_TAG" --pattern "manifest.remote.json" --dir base || true
           fi
 
@@ -60,64 +81,65 @@ jobs:
       - name: Generate manifest.remote.json
         run: |
           set -euo pipefail
+
           python3 - <<'PY'
-import os, json, hashlib, pathlib
+          import os, json, hashlib, pathlib
 
-repo = os.environ["REPO"]
-tag  = os.environ["TAG"]
+          repo = os.environ["REPO"]
+          tag  = os.environ["TAG"]
 
-latest_manifest_url = f"https://github.com/{repo}/releases/latest/download/manifest.remote.json"
-base_path   = pathlib.Path("base/manifest.remote.json")
-cur_build   = pathlib.Path("cur/Build.zip")
-cur_updater = pathlib.Path("cur/Updater.ps1")
+          latest_manifest_url = f"https://github.com/{repo}/releases/latest/download/manifest.remote.json"
+          base_path   = pathlib.Path("base/manifest.remote.json")
+          cur_build   = pathlib.Path("cur/Build.zip")
+          cur_updater = pathlib.Path("cur/Updater.ps1")
 
-def sha256_hex(b: bytes) -> str:
-    return hashlib.sha256(b).hexdigest()
+          def sha256_hex(b: bytes) -> str:
+              return hashlib.sha256(b).hexdigest()
 
-def normalize_utf8_bom_bytes(b: bytes) -> bytes:
-    # UTF-8 BOMが付いてても付いてなくても、最終的に「UTF-8 BOM付き」に統一してからhash化する
-    if b.startswith(b"\xef\xbb\xbf"):
-        b = b[3:]
-    text = b.decode("utf-8")  # Updater.ps1はUTF-8前提
-    return b"\xef\xbb\xbf" + text.encode("utf-8")
+          def normalize_utf8_bom_bytes(b: bytes) -> bytes:
+              # UTF-8 BOMが付いてても付いてなくても、最終的に「UTF-8 BOM付き」に統一してからhash化する
+              if b.startswith(b"\xef\xbb\xbf"):
+                  b = b[3:]
+              text = b.decode("utf-8")  # Updater.ps1はUTF-8前提
+              return b"\xef\xbb\xbf" + text.encode("utf-8")
 
-# base manifest を読み込む（無ければ初期化）
-if base_path.exists():
-    manifest = json.loads(base_path.read_text(encoding="utf-8"))
-else:
-    manifest = {
-        "manifestUrl": latest_manifest_url,
-        "build":   {"version": "", "url": "", "sha256": ""},
-        "updater": {"version": "", "url": "", "sha256": ""}
-    }
+          # base manifest を読み込む（無ければ初期化）
+          if base_path.exists():
+              manifest = json.loads(base_path.read_text(encoding="utf-8"))
+          else:
+              manifest = {
+                  "manifestUrl": latest_manifest_url,
+                  "build":   {"version": "", "url": "", "sha256": ""},
+                  "updater": {"version": "", "url": "", "sha256": ""}
+              }
 
-# 必須キーの保険
-manifest["manifestUrl"] = latest_manifest_url
-manifest.setdefault("build", {})
-manifest.setdefault("updater", {})
-for k in ["version", "url", "sha256"]:
-    manifest["build"].setdefault(k, "")
-    manifest["updater"].setdefault(k, "")
+          # 必須キーの保険
+          manifest["manifestUrl"] = latest_manifest_url
+          manifest.setdefault("build", {})
+          manifest.setdefault("updater", {})
+          for k in ["version", "url", "sha256"]:
+              manifest["build"].setdefault(k, "")
+              manifest["updater"].setdefault(k, "")
 
-# Build.zip がこのReleaseにあるなら更新
-if cur_build.exists():
-    b = cur_build.read_bytes()
-    manifest["build"]["version"] = tag
-    manifest["build"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Build.zip"
-    manifest["build"]["sha256"]  = sha256_hex(b)
+          # Build.zip がこのReleaseにあるなら更新
+          if cur_build.exists():
+              b = cur_build.read_bytes()
+              manifest["build"]["version"] = tag
+              manifest["build"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Build.zip"
+              manifest["build"]["sha256"]  = sha256_hex(b)
 
-# Updater.ps1 がこのReleaseにあるなら更新（UTF-8 BOM正規化後のhash）
-if cur_updater.exists():
-    b = cur_updater.read_bytes()
-    b_norm = normalize_utf8_bom_bytes(b)
-    manifest["updater"]["version"] = tag
-    manifest["updater"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Updater.ps1"
-    manifest["updater"]["sha256"]  = sha256_hex(b_norm)
+          # Updater.ps1 がこのReleaseにあるなら更新（UTF-8 BOM正規化後のhash）
+          if cur_updater.exists():
+              b = cur_updater.read_bytes()
+              b_norm = normalize_utf8_bom_bytes(b)
+              manifest["updater"]["version"] = tag
+              manifest["updater"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Updater.ps1"
+              manifest["updater"]["sha256"]  = sha256_hex(b_norm)
 
-out = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
-pathlib.Path("manifest.remote.json").write_text(out, encoding="utf-8")
-print(out)
-PY
+          out = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+          pathlib.Path("manifest.remote.json").write_text(out, encoding="utf-8")
+          print(out)
+          PY
 
       - name: Upload manifest.remote.json to this release
         run: |
