@@ -2,8 +2,8 @@
   "manifestUrl": "https://raw.githubusercontent.com/oSUiMiNo/Manifest_LiveApp/refs/heads/main/manifest.remote.json", 
   "build": {
     "version": "1.0",
-    "url": "https://oohiramao.quickconnect.to/d/s/16FGzIsiVTgWaP5cKkqCRSeTEaVS4Cf4/VGN42thkLP0dOOW2McjUvWR3JBn5A58P-C7OAmaMz0gw",
-    "sha256": ""
+    "url": "https://github.com/oSUiMiNo/Manifest_LiveApp/releases/latest/download/Build",
+    "sha256": "sha256:7bcace61513c2a3b59b40894932a30a54e4796cc753685453ebd7961dccb3030"
   },
   "updater": {
     "version": "1.0",
