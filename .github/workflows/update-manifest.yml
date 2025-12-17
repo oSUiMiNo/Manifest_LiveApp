@@ -24,22 +24,23 @@ jobs:
           set -euo pipefail
           gh api "repos/$REPO/releases?per_page=30" > releases.json
           python3 - <<'PY'
-import json, os
-tag = os.environ["TAG"]
-rels = json.load(open("releases.json", "r", encoding="utf-8"))
-prev = ""
-for r in rels:
-    if r.get("draft"):
-        continue
-    if r.get("tag_name") == tag:
-        continue
-    prev = r.get("tag_name", "")
-    if prev:
-        break
-with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
-    f.write(f"PREV_TAG={prev}\n")
-print("PREV_TAG =", prev)
-PY
+          import json, os
+          tag = os.environ["TAG"]
+          rels = json.load(open("releases.json", "r", encoding="utf-8"))
+          prev = ""
+          for r in rels:
+              if r.get("draft"):
+                  continue
+              if r.get("tag_name") == tag:
+                  continue
+              prev = r.get("tag_name", "")
+              if prev:
+                  break
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+              f.write(f"PREV_TAG={prev}\n")
+          print("PREV_TAG =", prev)
+          PY
+
 
       - name: Download base manifest from previous release (if exists)
         run: |
