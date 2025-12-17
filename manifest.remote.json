@@ -3,7 +3,7 @@
   "build": {
     "version": "1.0",
     "url": "https://github.com/oSUiMiNo/Manifest_LiveApp/releases/latest/download/Build",
-    "sha256": "sha256:7bcace61513c2a3b59b40894932a30a54e4796cc753685453ebd7961dccb3030"
+    "sha256": ""
   },
   "updater": {
     "version": "1.0",
