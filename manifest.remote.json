@@ -2,7 +2,7 @@
   "manifestUrl": "https://raw.githubusercontent.com/oSUiMiNo/Manifest_LiveApp/refs/heads/main/manifest.remote.json", 
   "build": {
     "version": "1.0",
-    "url": "https://github.com/oSUiMiNo/Manifest_LiveApp/releases/latest/download/Build.zip",
+    "url": "https://github.com/oSUiMiNo/Manifest_LiveApp/releases/latest/download/Build",
     "sha256": ""
   },
   "updater": {
