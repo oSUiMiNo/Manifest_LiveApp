@@ -27,8 +27,20 @@ if ([string]::IsNullOrWhiteSpace($RootPath)) {
 
 $UpdaterPath        = Join-Path $RootPath "Updater.ps1"
 $LocalManifestPath  = Join-Path $RootPath "manifest.local.json"
-$RemoteManifestPath = Join-Path $RootPath "manifest.remote.json"   # デバッグ用（任意）
-$UpdaterLog         = Join-Path $RootPath "updater.log"
+$RemoteManifestPath = Join-Path $RootPath "manifest.remote.json"   # 旧デバッグ互換（最終的に残さない）
+# Logs are stored in LiveApp/Log
+$LogDir = Join-Path $RootPath "Log"
+try { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null } catch {}
+
+# Migrate old log once (optional)
+$OldUpdaterLog = Join-Path $RootPath "updater.log"
+$UpdaterLog    = Join-Path $LogDir "updater.log"
+try {
+    if (Test-Path $OldUpdaterLog -and -not (Test-Path $UpdaterLog)) {
+        Move-Item -Path $OldUpdaterLog -Destination $UpdaterLog -Force
+    }
+} catch {}
+
 $BuildDir           = Join-Path $RootPath "Build"
 
 # 旧Buildを残すならtrue（必要ならfalseに）
@@ -143,9 +155,6 @@ function Try-Resolve-ManifestUrl([string]$initialUrl) {
     Write-Log "Fetch remote manifest: $initialUrl"
     $m1 = Get-Json $initialUrl
 
-    # デバッグ用に保存（任意）
-    try { ($m1 | ConvertTo-Json -Depth 10) | Set-Content -Path $RemoteManifestPath -Encoding UTF8 } catch {}
-
     $candidate = [string]$m1.manifestUrl
     if ([string]::IsNullOrWhiteSpace($candidate)) {
         $m1 | Add-Member -NotePropertyName manifestUrl -NotePropertyValue $initialUrl -Force
@@ -161,7 +170,6 @@ function Try-Resolve-ManifestUrl([string]$initialUrl) {
     Write-Log "ManifestUrl differs. Validate new url: $candidate"
     try {
         $m2 = Get-Json $candidate
-        try { ($m2 | ConvertTo-Json -Depth 10) | Set-Content -Path $RemoteManifestPath -Encoding UTF8 } catch {}
         if ([string]::IsNullOrWhiteSpace([string]$m2.manifestUrl)) {
             $m2 | Add-Member -NotePropertyName manifestUrl -NotePropertyValue $candidate -Force
         }
@@ -201,9 +209,7 @@ function Update-UpdaterIfNeeded($local, $remote) {
     if ([string]::IsNullOrWhiteSpace($url)) { throw "remote.updater.url is empty." }
 
     $tmpDir = Join-Path $RootPath "_update_tmp"
-    if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue }
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
-
 
     # まずはそのままDL（rawの実体）
     $downloaded = Join-Path $tmpDir "Updater.downloaded.ps1"
@@ -234,7 +240,6 @@ function Update-UpdaterIfNeeded($local, $remote) {
 
     Write-Log "Updater updated. Request relaunch."
     return $true
-
 }
 
 function Get-MainExePath([string]$Dir) {
@@ -296,12 +301,18 @@ function Update-BuildIfNeeded($local, $remote) {
 
     # zipの中身が「Build/..」1階層か、直置きか両対応
     $newRoot = $extractDir
-    $dirs  = @(Get-ChildItem -Path $extractDir -Directory -ErrorAction SilentlyContinue)
-    $files = @(Get-ChildItem -Path $extractDir -File      -ErrorAction SilentlyContinue)
-    if ($dirs.Count -eq 1 -and $files.Count -eq 0) {
-        $newRoot = $dirs[0].FullName
-    }
+    $dirs  = Get-ChildItem -Path $extractDir -Directory -ErrorAction SilentlyContinue
+    $files = Get-ChildItem -Path $extractDir -File      -ErrorAction SilentlyContinue
 
+    # NOTE:
+    #  - $dirs/$files は「単体オブジェクト」になる場合があるので .Count 参照は危険。
+    #  - @() で配列化して Count を安全に見る。
+    $dirsArr  = @($dirs)
+    $filesArr = @($files)
+
+    if ($dirsArr.Count -eq 1 -and $filesArr.Count -eq 0) {
+        $newRoot = $dirsArr[0].FullName
+    }
 
     $BuildNew = Join-Path $RootPath "Build_new"
     $BuildOld = Join-Path $RootPath "Build_old"
@@ -360,6 +371,9 @@ try {
     } catch {
         Write-Log "WARN: Failed to write manifest.local.json: $($_.Exception.Message)"
     }
+
+    # Cleanup: remove debug remote manifest file (if any)
+    try { Remove-Item -Path $RemoteManifestPath -Force -ErrorAction SilentlyContinue } catch {}
 
     # 6) 起動
     $exe = Get-MainExePath $BuildDir
