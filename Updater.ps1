@@ -201,7 +201,9 @@ function Update-UpdaterIfNeeded($local, $remote) {
     if ([string]::IsNullOrWhiteSpace($url)) { throw "remote.updater.url is empty." }
 
     $tmpDir = Join-Path $RootPath "_update_tmp"
+    if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue }
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+
 
     # まずはそのままDL（rawの実体）
     $downloaded = Join-Path $tmpDir "Updater.downloaded.ps1"
@@ -294,11 +296,12 @@ function Update-BuildIfNeeded($local, $remote) {
 
     # zipの中身が「Build/..」1階層か、直置きか両対応
     $newRoot = $extractDir
-    $dirs  = Get-ChildItem -Path $extractDir -Directory -ErrorAction SilentlyContinue
-    $files = Get-ChildItem -Path $extractDir -File      -ErrorAction SilentlyContinue
+    $dirs  = @(Get-ChildItem -Path $extractDir -Directory -ErrorAction SilentlyContinue)
+    $files = @(Get-ChildItem -Path $extractDir -File      -ErrorAction SilentlyContinue)
     if ($dirs.Count -eq 1 -and $files.Count -eq 0) {
         $newRoot = $dirs[0].FullName
     }
+
 
     $BuildNew = Join-Path $RootPath "Build_new"
     $BuildOld = Join-Path $RootPath "Build_old"
