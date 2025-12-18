@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "対象のReleaseタグ（例: Build_1.1 / Updater_1.23）"
+        description: "対象のReleaseタグ（例: Build_1.1 / Launcher_1.23）"
         required: true
 
 permissions:
@@ -70,7 +70,7 @@ jobs:
           set -euo pipefail
           mkdir -p cur
           gh release download "$TAG" --pattern "Build.zip" --dir cur --repo "$REPO" || true
-          gh release download "$TAG" --pattern "Updater.ps1" --dir cur --repo "$REPO" || true
+          gh release download "$TAG" --pattern "Launcher.ps1" --dir cur --repo "$REPO" || true
 
       - name: Generate manifest.remote.json
         run: |
@@ -84,13 +84,13 @@ jobs:
           latest_manifest_url = f"https://github.com/{repo}/releases/latest/download/manifest.remote.json"
           base_path   = pathlib.Path("base/manifest.remote.json")
           cur_build   = pathlib.Path("cur/Build.zip")
-          cur_updater = pathlib.Path("cur/Updater.ps1")
+          cur_launcher = pathlib.Path("cur/Launcher.ps1")
 
           def sha256_hex(b: bytes) -> str:
               return hashlib.sha256(b).hexdigest()
 
           def version_from_tag(tag_str: str, prefix: str) -> str:
-              # 例: "Build_1.1" -> "1.1", "Updater_1.23" -> "1.23"
+              # 例: "Build_1.1" -> "1.1", "Launcher_1.23" -> "1.23"
               if tag_str.startswith(prefix):
                   return tag_str[len(prefix):]
               # 想定外のタグでも落とさず、元の文字列を返す
@@ -102,15 +102,15 @@ jobs:
               manifest = {
                   "manifestUrl": latest_manifest_url,
                   "build":   {"version": "", "url": "", "sha256": ""},
-                  "updater": {"version": "", "url": "", "sha256": ""}
+                  "launcher": {"version": "", "url": "", "sha256": ""}
               }
 
           manifest["manifestUrl"] = latest_manifest_url
           manifest.setdefault("build", {})
-          manifest.setdefault("updater", {})
+          manifest.setdefault("launcher", {})
           for k in ["version", "url", "sha256"]:
               manifest["build"].setdefault(k, "")
-              manifest["updater"].setdefault(k, "")
+              manifest["launcher"].setdefault(k, "")
 
           # Build.zip がこのReleaseにあるなら更新
           if cur_build.exists():
@@ -119,12 +119,12 @@ jobs:
               manifest["build"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Build.zip"
               manifest["build"]["sha256"]  = sha256_hex(b)
 
-          # Updater.ps1 がこのReleaseにあるなら更新（DLされる“そのまま”のsha256）
-          if cur_updater.exists():
-              b = cur_updater.read_bytes()
-              manifest["updater"]["version"] = version_from_tag(tag, "Updater_")
-              manifest["updater"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Updater.ps1"
-              manifest["updater"]["sha256"]  = sha256_hex(b)
+          # Launcher.ps1 がこのReleaseにあるなら更新（DLされる“そのまま”のsha256）
+          if cur_launcher.exists():
+              b = cur_launcher.read_bytes()
+              manifest["launcher"]["version"] = version_from_tag(tag, "Launcher_")
+              manifest["launcher"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Launcher.ps1"
+              manifest["launcher"]["sha256"]  = sha256_hex(b)
 
           out = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
           pathlib.Path("manifest.remote.json").write_text(out, encoding="utf-8")
