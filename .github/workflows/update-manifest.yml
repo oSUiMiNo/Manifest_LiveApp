@@ -1,4 +1,4 @@
-name: Update manifest.remote.json on Release
+name: Update Manifest.json on Release
 
 on:
   release:
@@ -62,7 +62,7 @@ jobs:
           set -euo pipefail
           mkdir -p base
           if [ -n "${PREV_TAG:-}" ]; then
-            gh release download "$PREV_TAG" --pattern "manifest.remote.json" --dir base --repo "$REPO" || true
+            gh release download "$PREV_TAG" --pattern "Manifest.json" --dir base --repo "$REPO" || true
           fi
 
       - name: Download current release assets (if they exist)
@@ -72,7 +72,7 @@ jobs:
           gh release download "$TAG" --pattern "Build.zip" --dir cur --repo "$REPO" || true
           gh release download "$TAG" --pattern "Launcher.ps1" --dir cur --repo "$REPO" || true
 
-      - name: Generate manifest.remote.json
+      - name: Generate Manifest.json
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -81,8 +81,8 @@ jobs:
           repo = os.environ["REPO"]
           tag  = os.environ["TAG"]
 
-          latest_manifest_url = f"https://github.com/{repo}/releases/latest/download/manifest.remote.json"
-          base_path   = pathlib.Path("base/manifest.remote.json")
+          latest_manifest_url = f"https://github.com/{repo}/releases/latest/download/Manifest.json"
+          base_path   = pathlib.Path("base/Manifest.json")
           cur_build   = pathlib.Path("cur/Build.zip")
           cur_launcher = pathlib.Path("cur/Launcher.ps1")
 
@@ -127,11 +127,11 @@ jobs:
               manifest["launcher"]["sha256"]  = sha256_hex(b)
 
           out = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
-          pathlib.Path("manifest.remote.json").write_text(out, encoding="utf-8")
+          pathlib.Path("Manifest.json").write_text(out, encoding="utf-8")
           print(out)
           PY
 
-      - name: Upload manifest.remote.json to this release
+      - name: Upload Manifest.json to this release
         run: |
           set -euo pipefail
-          gh release upload "$TAG" manifest.remote.json --clobber --repo "$REPO"
+          gh release upload "$TAG" Manifest.json --clobber --repo "$REPO"
