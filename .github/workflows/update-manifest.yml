@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "対象のReleaseタグ（例: v1.3）"
+        description: "対象のReleaseタグ（例: Build_1.1 / Updater_1.23）"
         required: true
 
 permissions:
@@ -89,11 +89,12 @@ jobs:
           def sha256_hex(b: bytes) -> str:
               return hashlib.sha256(b).hexdigest()
 
-          def normalize_utf8_bom_bytes(b: bytes) -> bytes:
-              if b.startswith(b"\xef\xbb\xbf"):
-                  b = b[3:]
-              text = b.decode("utf-8")
-              return b"\xef\xbb\xbf" + text.encode("utf-8")
+          def version_from_tag(tag_str: str, prefix: str) -> str:
+              # 例: "Build_1.1" -> "1.1", "Updater_1.23" -> "1.23"
+              if tag_str.startswith(prefix):
+                  return tag_str[len(prefix):]
+              # 想定外のタグでも落とさず、元の文字列を返す
+              return tag_str
 
           if base_path.exists():
               manifest = json.loads(base_path.read_text(encoding="utf-8"))
@@ -111,19 +112,19 @@ jobs:
               manifest["build"].setdefault(k, "")
               manifest["updater"].setdefault(k, "")
 
+          # Build.zip がこのReleaseにあるなら更新
           if cur_build.exists():
               b = cur_build.read_bytes()
-              manifest["build"]["version"] = tag
+              manifest["build"]["version"] = version_from_tag(tag, "Build_")
               manifest["build"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Build.zip"
               manifest["build"]["sha256"]  = sha256_hex(b)
 
           # Updater.ps1 がこのReleaseにあるなら更新（DLされる“そのまま”のsha256）
           if cur_updater.exists():
               b = cur_updater.read_bytes()
-              manifest["updater"]["version"] = tag
+              manifest["updater"]["version"] = version_from_tag(tag, "Updater_")
               manifest["updater"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Updater.ps1"
               manifest["updater"]["sha256"]  = sha256_hex(b)
-
 
           out = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
           pathlib.Path("manifest.remote.json").write_text(out, encoding="utf-8")
