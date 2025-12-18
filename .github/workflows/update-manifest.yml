@@ -2,7 +2,7 @@ name: Update manifest.remote.json on Release
 
 on:
   release:
-    types: [published]
+    types: [published, edited]
   workflow_dispatch:
     inputs:
       tag:
