@@ -32,7 +32,7 @@ jobs:
             # タグからRelease情報を引いてタイトル(name)を取得（失敗しても落とさず空にする）
             gh api "repos/${{ github.repository }}/releases/tags/${{ github.event.inputs.tag }}" > release.json 2>/dev/null || true
 
-            python3 - <<'PY'
+            python3 - <<`PY'
             import json, os, pathlib
             title = ""
             p = pathlib.Path("release.json")
