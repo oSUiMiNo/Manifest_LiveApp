@@ -117,12 +117,13 @@ jobs:
               manifest["build"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Build.zip"
               manifest["build"]["sha256"]  = sha256_hex(b)
 
+          # Updater.ps1 がこのReleaseにあるなら更新（DLされる“そのまま”のsha256）
           if cur_updater.exists():
               b = cur_updater.read_bytes()
-              b_norm = normalize_utf8_bom_bytes(b)
               manifest["updater"]["version"] = tag
               manifest["updater"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Updater.ps1"
-              manifest["updater"]["sha256"]  = sha256_hex(b_norm)
+              manifest["updater"]["sha256"]  = sha256_hex(b)
+
 
           out = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
           pathlib.Path("manifest.remote.json").write_text(out, encoding="utf-8")
