@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "対象のReleaseタグ（例: Build_1.1 / Launcher_1.23）"
+        description: "対象のReleaseタグ（例: 2025_1218_1940）"
         required: true
 
 permissions:
@@ -26,9 +26,30 @@ jobs:
           echo "REPO=${{ github.repository }}" >> "$GITHUB_ENV"
 
           if [ -n "${{ github.event.inputs.tag }}" ]; then
+            # 手動実行
             echo "TAG=${{ github.event.inputs.tag }}" >> "$GITHUB_ENV"
+
+            # タグからRelease情報を引いてタイトル(name)を取得（失敗しても落とさず空にする）
+            gh api "repos/${{ github.repository }}/releases/tags/${{ github.event.inputs.tag }}" > release.json 2>/dev/null || true
+
+            python3 - <<'PY'
+            import json, os, pathlib
+            title = ""
+            p = pathlib.Path("release.json")
+            if p.exists() and p.stat().st_size > 0:
+                try:
+                    obj = json.loads(p.read_text(encoding="utf-8"))
+                    title = obj.get("name") or ""
+                except Exception:
+                    title = ""
+            with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+                f.write(f"RELEASE_TITLE={title}\n")
+            print("RELEASE_TITLE =", title)
+            PY
           else
+            # Releaseイベント
             echo "TAG=${{ github.event.release.tag_name }}" >> "$GITHUB_ENV"
+            echo "RELEASE_TITLE=${{ github.event.release.name }}" >> "$GITHUB_ENV"
           fi
 
       - name: Find previous release tag (for base manifest)
@@ -76,32 +97,38 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os, json, hashlib, pathlib
+          import os, json, hashlib, pathlib, re
 
-          repo = os.environ["REPO"]
-          tag  = os.environ["TAG"]
+          repo  = os.environ["REPO"]
+          tag   = os.environ["TAG"]
+          title = os.environ.get("RELEASE_TITLE", "") or ""
 
           latest_manifest_url = f"https://github.com/{repo}/releases/latest/download/Manifest.json"
-          base_path   = pathlib.Path("base/Manifest.json")
-          cur_build   = pathlib.Path("cur/Build.zip")
+          base_path    = pathlib.Path("base/Manifest.json")
+          cur_build    = pathlib.Path("cur/Build.zip")
           cur_launcher = pathlib.Path("cur/Launcher.ps1")
 
           def sha256_hex(b: bytes) -> str:
               return hashlib.sha256(b).hexdigest()
 
-          def version_from_tag(tag_str: str, prefix: str) -> str:
-              # 例: "Build_1.1" -> "1.1", "Launcher_1.23" -> "1.23"
-              if tag_str.startswith(prefix):
-                  return tag_str[len(prefix):]
-              # 想定外のタグでも落とさず、元の文字列を返す
-              return tag_str
+          def version_from_title(title_str: str, kind: str) -> str:
+              """
+              例:
+                title="Build_1.23"    kind="Build"    -> "1.23"
+                title="Launcher_1.5"  kind="Launcher" -> "1.5"
+              余計な文字が付いてても kind_数字 を含めばOK
+              """
+              if not title_str:
+                  return ""
+              m = re.search(rf'\b{re.escape(kind)}[_\s-]*([0-9]+(?:\.[0-9]+)*)', title_str)
+              return m.group(1) if m else ""
 
           if base_path.exists():
               manifest = json.loads(base_path.read_text(encoding="utf-8"))
           else:
               manifest = {
                   "manifestUrl": latest_manifest_url,
-                  "build":   {"version": "", "url": "", "sha256": ""},
+                  "build":    {"version": "", "url": "", "sha256": ""},
                   "launcher": {"version": "", "url": "", "sha256": ""}
               }
 
@@ -115,19 +142,27 @@ jobs:
           # Build.zip がこのReleaseにあるなら更新
           if cur_build.exists():
               b = cur_build.read_bytes()
-              manifest["build"]["version"] = version_from_tag(tag, "Build_")
-              manifest["build"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Build.zip"
-              manifest["build"]["sha256"]  = sha256_hex(b)
+              v = version_from_title(title, "Build")
+              if v:
+                  manifest["build"]["version"] = v
+              # vが取れない場合は前のversionを維持
+              manifest["build"]["url"]    = f"https://github.com/{repo}/releases/download/{tag}/Build.zip"
+              manifest["build"]["sha256"] = sha256_hex(b)
 
           # Launcher.ps1 がこのReleaseにあるなら更新（DLされる“そのまま”のsha256）
           if cur_launcher.exists():
               b = cur_launcher.read_bytes()
-              manifest["launcher"]["version"] = version_from_tag(tag, "Launcher_")
-              manifest["launcher"]["url"]     = f"https://github.com/{repo}/releases/download/{tag}/Launcher.ps1"
-              manifest["launcher"]["sha256"]  = sha256_hex(b)
+              v = version_from_title(title, "Launcher")
+              if v:
+                  manifest["launcher"]["version"] = v
+              # vが取れない場合は前のversionを維持
+              manifest["launcher"]["url"]    = f"https://github.com/{repo}/releases/download/{tag}/Launcher.ps1"
+              manifest["launcher"]["sha256"] = sha256_hex(b)
 
           out = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
           pathlib.Path("Manifest.json").write_text(out, encoding="utf-8")
+          print("TAG =", tag)
+          print("RELEASE_TITLE =", title)
           print(out)
           PY
 
