@@ -84,7 +84,7 @@ jobs:
           set -euo pipefail
           mkdir -p cur
           gh release download "$TAG" --pattern "Build.zip" --dir cur --repo "$REPO" || true
-          gh release download "$TAG" --pattern "Launcher.exe" --dir cur --repo "$REPO" || true
+          gh release download "$TAG" --pattern "Launcher.zip" --dir cur --repo "$REPO" || true
 
       - name: Generate Manifest.json
         run: |
@@ -99,7 +99,7 @@ jobs:
           latest_manifest_url = f"https://github.com/{repo}/releases/latest/download/Manifest.json"
           base_path    = pathlib.Path("base/Manifest.json")
           cur_build    = pathlib.Path("cur/Build.zip")
-          cur_launcher = pathlib.Path("cur/Launcher.exe")
+          cur_launcher = pathlib.Path("cur/Launcher.zip")
 
           def sha256_hex(b: bytes) -> str:
               return hashlib.sha256(b).hexdigest()
@@ -142,14 +142,14 @@ jobs:
               manifest["build"]["url"]    = f"https://github.com/{repo}/releases/download/{tag}/Build.zip"
               manifest["build"]["sha256"] = sha256_hex(b)
 
-          # Launcher.exe がこのReleaseにあるなら更新（DLされる"そのまま"のsha256）
+          # Launcher.zip がこのReleaseにあるなら更新（DLされる"そのまま"のsha256）
           if cur_launcher.exists():
               b = cur_launcher.read_bytes()
               v = version_from_title(title, "Launcher")
               if v:
                   manifest["launcher"]["version"] = v
               # vが取れない場合は前のversionを維持
-              manifest["launcher"]["url"]    = f"https://github.com/{repo}/releases/download/{tag}/Launcher.exe"
+              manifest["launcher"]["url"]    = f"https://github.com/{repo}/releases/download/{tag}/Launcher.zip"
               manifest["launcher"]["sha256"] = sha256_hex(b)
 
           out = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
